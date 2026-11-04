@@ -54,7 +54,23 @@ These 19 are the only tags the model knows. Anything else, like `[breath]` or `[
 </speak>
 ```
 
-Only `<voice>`, `<break>` and the inline tags above are honored; other SSML tags are read as plain text.
+**Everything else the script can do.** Use these only when they help; most episodes need just `<voice>`, `<break>` and tags.
+
+| Markup | Effect |
+|---|---|
+| `<voice name="s1">` / `"s2"` | the two hosts |
+| `<voice name="hifi-92">` | a guest from the bundled voice library (`hifi-*`, `libritts-*`; an unknown name lists them) |
+| `<voice name="guest.wav">` | clone any 10–15 s clean speech clip (path relative to the script) |
+| `<break time="500ms"/>`, `<break strength="weak\|medium\|strong\|x-strong"/>` | silence |
+| `<p>…</p>` | paragraph: adds a 0.5 s pause after it |
+| `<prosody rate="slow\|fast\|80%\|+20%" pitch="+2st\|-10%\|high" volume="+6dB\|soft">` | speed, pitch and loudness, applied after generation (nests) |
+| `<sub alias="Application Programming Interface">API</sub>` | say the alias instead of the text |
+| `<say-as interpret-as="characters">AWS</say-as>` | spell it out letter by letter |
+| `<audio src="sting.wav"/>` | insert a sound file (path relative to the script) |
+| `seed="42"` on `<speak>`, `<voice>` or `<prosody>` | repeatable takes |
+| `temperature`, `top_p`, `top_k`, `repetition_penalty` on the same elements | engine sampling (defaults 0.8, 0.95, 1000, 1.2); lower temperature is steadier, higher is livelier |
+
+Other SSML elements (`<emphasis>`, `<s>`, `<mark>`, `<lang>`) are allowed, but only their text is read; the engine has no control for them. Inline markup never splits a sentence into separate takes.
 
 ## 3. Render
 Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`, then run the renderer two folders above this skill's real directory (`realpath` follows a symlinked skill folder back to the plugin):

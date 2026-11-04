@@ -35,7 +35,7 @@ The first run creates a virtualenv in `~/.local/share/explain-as-podcast` (overr
 scripts/podcast.sh my-script.ssml out.mp3
 ```
 
-Script format — SSML with `<voice name="s1|s2">` and `<break time="...">`, or plain lines:
+Script format — SSML (below), or plain lines:
 
 ```text
 S1: Wait, so the computer laughs now? [laugh]
@@ -47,6 +47,30 @@ Inline tags (all 19 that Chatterbox Turbo knows; anything else is dropped):
 
 - Sounds: `[laugh]` `[chuckle]` `[sigh]` `[gasp]` `[groan]` `[clear throat]` `[cough]` `[sniff]` `[shush]` `[crying]`
 - Delivery: `[happy]` `[surprised]` `[sarcastic]` `[angry]` `[fear]` `[whispering]` `[dramatic]` `[narration]` `[advertisement]`
+
+SSML, everything the engine can do plus the usual SSML extras:
+
+```xml
+<speak xmlns="http://www.w3.org/2001/10/synthesis" seed="42">
+  <audio src="intro.wav"/>
+  <p><voice name="s1">[happy] Today: the <sub alias="Application Programming Interface">API</sub> on <say-as interpret-as="characters">AWS</say-as>.</voice></p>
+  <voice name="s2" temperature="0.6">[clear throat] <prosody rate="slow" volume="+3dB">Slowly, now.</prosody></voice>
+  <break strength="strong"/>
+  <voice name="hifi-92">[whispering] A guest from the voice library.</voice>
+  <voice name="guest.wav">Or any voice clip you have the rights to.</voice>
+</speak>
+```
+
+| Markup | Effect |
+|---|---|
+| `<voice name>` | `s1`/`s2`, a library voice (`hifi-*`, `libritts-*`), or a `.wav` to clone |
+| `seed`, `temperature`, `top_p`, `top_k`, `repetition_penalty` | engine sampling, on `<speak>`, `<voice>` or `<prosody>` |
+| `<prosody rate pitch volume>` | applied after generation; nests |
+| `<break time\|strength>`, `<p>` | pauses |
+| `<sub alias>`, `<say-as interpret-as="characters">` | text substitution and spelling |
+| `<audio src>` | insert a sound file |
+
+`<emphasis>`, `<s>`, `<mark>` and `<lang>` are accepted, but only their text is read. Run `python3 scripts/test_ssml.py` to check the parser.
 
 ## Voices
 
