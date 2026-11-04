@@ -25,11 +25,13 @@ except BlockingIOError:
 import numpy as np
 import soundfile as sf
 import torch
-from chatterbox.tts_turbo import ChatterboxTurboTTS
+from chatterbox.tts_turbo import ChatterboxTurboTTS, Conditionals
+from transformers.initialization import no_init_weights
 
 device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"Loading Chatterbox Turbo on {device}...")
-model = ChatterboxTurboTTS.from_pretrained(device=device)
+with no_init_weights():  # skip random init of weights the checkpoint overwrites anyway: ~2x faster load, identical output
+    model = ChatterboxTurboTTS.from_pretrained(device=device)
 
 voices = {}
 def resolve_voice(name):
@@ -43,7 +45,12 @@ def resolve_voice(name):
 def use_voice(speaker):
     v = resolve_voice(speaker)
     if v not in voices:
-        model.prepare_conditionals(str(DATA / "voices" / f"{v}.wav"), norm_loudness=False)  # loudnorm returns float64, which MPS rejects
+        wav, cache = DATA / "voices" / f"{v}.wav", DATA / "voices" / f"{v}.conds.pt"
+        if cache.exists() and cache.stat().st_mtime >= wav.stat().st_mtime:
+            model.conds = Conditionals.load(cache).to(device)
+        else:  # first use of this voice clip: embed it once and cache it (rebuilt if the .wav changes)
+            model.prepare_conditionals(str(wav), norm_loudness=False)  # loudnorm returns float64, which MPS rejects
+            model.conds.save(cache)
         voices[v] = model.conds
     model.conds = voices[v]
 
