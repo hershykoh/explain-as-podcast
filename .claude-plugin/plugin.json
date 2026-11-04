@@ -2,8 +2,18 @@
   "name": "explain-as-podcast",
   "version": "1.0.0",
   "description": "Explain any topic, code, or answer as a two-host audio podcast (with laughs) rendered locally by Chatterbox Turbo.",
-  "author": { "name": "Hershy Kohn", "url": "https://github.com/hershykoh" },
+  "author": {
+    "name": "Hershy Kohn",
+    "url": "https://github.com/hershykoh"
+  },
   "repository": "https://github.com/hershykoh/explain-as-podcast",
   "license": "Apache-2.0",
-  "keywords": ["podcast", "tts", "chatterbox", "audio", "explain"]
+  "keywords": [
+    "podcast",
+    "tts",
+    "chatterbox",
+    "audio",
+    "explain"
+  ],
+  "icon": ".claude-plugin/icon.png"
 }
