@@ -12,8 +12,8 @@ argument-hint: "[topic or text to explain]"
 
 ## 2. Write the script (SSML)
 10–14 turns between two hosts:
-- `s1` (Andrew): curious host who asks what the listener is thinking.
-- `s2` (Brian): expert who explains with everyday analogies and plain English.
+- `s1`: curious host who asks what the listener is thinking.
+- `s2`: expert who explains with everyday analogies and plain English.
 
 Rules:
 - No code blocks, URLs, or long identifiers read aloud; describe them instead.

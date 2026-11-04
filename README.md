@@ -27,7 +27,7 @@ Then ask *"explain this as a podcast"* or run `/explain-as-podcast [topic]`.
 - Apple Silicon (MPS), an NVIDIA GPU, or patience on CPU
 - Apple Silicon tip: `brew install python@3.12` before the first run. Setup then uses [chatterbox-mlx](https://pypi.org/project/chatterbox-mlx/), the same model on Apple's MLX, which renders about 1.5x faster end to end. Set `EXPLAIN_PODCAST_QUANT_BITS=8` for a little more speed (listen first).
 
-The first run creates a virtualenv in `~/.local/share/explain-as-podcast` (override with `EXPLAIN_PODCAST_HOME`), installs Chatterbox Turbo, and makes the two host voice samples. Episodes are saved in `episodes/` there.
+The first run creates a virtualenv in `~/.local/share/explain-as-podcast` (override with `EXPLAIN_PODCAST_HOME`), installs Chatterbox Turbo, and copies in the two default host voices from `voices/`. Episodes are saved in `episodes/` there.
 
 ## Use the renderer directly
 
@@ -50,11 +50,11 @@ Inline tags (all 19 that Chatterbox Turbo knows; anything else is dropped):
 
 ## Voices
 
-[`voices/`](voices/) has ten narrator voices from the CC BY 4.0 Hi-Fi TTS dataset, recorded from public-domain LibriVox audiobooks, with natural breathing. Copy any of them over a host's sample to use it.
+[`voices/`](voices/) has eleven narrator voices from the CC BY 4.0 Hi-Fi TTS and LibriTTS-R datasets, recorded from public-domain LibriVox audiobooks, with natural breathing. The defaults are `libritts-8455` and `hifi-9017`. Copy any of them over a host's sample to use it.
 
 ## Custom voices
 
-Replace `~/.local/share/explain-as-podcast/voices/s1.wav` / `s2.wav` with any clean 5–15 second recording (only use voices you have the right to use). The defaults are generated on your machine with Microsoft Edge TTS voices.
+Replace `~/.local/share/explain-as-podcast/voices/s1.wav` / `s2.wav` with any clean 5–15 second recording (only use voices you have the right to use). 
 
 ## Notes
 
