@@ -88,6 +88,19 @@ def use_voice(speaker):
         voices[v] = load_voice(DATA / "voices" / f"{v}.wav", DATA / "voices" / f"{v}.conds.pt")
     set_voice(voices[v])
 
+# The 19 paralinguistic tags in Chatterbox Turbo's tokenizer; any other [tag] would be read aloud.
+TAGS = {"laugh", "chuckle", "sigh", "gasp", "groan", "clear throat", "cough", "sniff", "shush", "crying",
+        "happy", "surprised", "sarcastic", "angry", "fear", "whispering", "dramatic", "narration", "advertisement"}
+
+def clean_tags(text):
+    def fix(m):
+        tag = m.group(1).strip().lower()
+        if tag in TAGS:
+            return f"[{tag}]"
+        print(f"note: dropped unknown tag [{m.group(1)}]", file=sys.stderr)
+        return ""
+    return re.sub(r"\s+", " ", re.sub(r"\[([^\]]*)\]", fix, text)).strip()
+
 def parse_items(src_path):
     content = Path(src_path).read_text().strip()
     items = []
@@ -126,7 +139,8 @@ def parse_items(src_path):
                 items.append(("speech", spk.strip(), text.strip()))
     return items
 
-items = parse_items(src)
+items = [(i[0], i[1], clean_tags(i[2])) if i[0] == "speech" else i for i in parse_items(src)]
+items = [i for i in items if i[0] == "break" or i[2]]  # a line that was only an unknown tag
 tmp = Path(tempfile.mkdtemp())
 parts, start = [], time.time()
 speech_count = sum(1 for item in items if item[0] == "speech")

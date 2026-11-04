@@ -8,7 +8,7 @@ https://github.com/user-attachments/assets/fcbbf171-0c44-4d9e-9e88-698472224318
 
 - Ask Claude *"explain this as a podcast"* — about a bug, a PR, a concept, or its own last answer
 - Two hosts: a curious one who asks your questions, and an expert who answers with analogies
-- Real laughs and chuckles (`[laugh]`, `[chuckle]`), natural pauses, and the MP3 plays right in your chat
+- Real laughs, sighs, gasps and whispers (19 sound and mood tags), natural pauses, and the MP3 plays right in your chat
 - 100% local and free: runs on Apple Silicon, NVIDIA, or CPU
 
 ## Install
@@ -43,7 +43,10 @@ S2: [chuckle] It does.
 PAUSE: 500ms
 ```
 
-Inline tags: `[laugh]`, `[chuckle]`, `[cough]`.
+Inline tags (all 19 that Chatterbox Turbo knows; anything else is dropped):
+
+- Sounds: `[laugh]` `[chuckle]` `[sigh]` `[gasp]` `[groan]` `[clear throat]` `[cough]` `[sniff]` `[shush]` `[crying]`
+- Delivery: `[happy]` `[surprised]` `[sarcastic]` `[angry]` `[fear]` `[whispering]` `[dramatic]` `[narration]` `[advertisement]`
 
 ## Custom voices
 
