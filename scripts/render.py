@@ -211,11 +211,18 @@ def player():
     if not shutil.which("ffplay"):
         print("note: --play needs ffplay (it comes with ffmpeg); rendering without playback", file=sys.stderr)
         return None, None
+    env = dict(os.environ)
+    if sys.platform == "darwin":
+        # Homebrew's ffplay runs on sdl2-compat (SDL3), which can open a silent audio driver when started
+        # from a background process; forcing CoreAudio makes it play on the Mac's default output.
+        env.setdefault("SDL_AUDIO_DRIVER", "coreaudio")  # SDL3
+        env.setdefault("SDL_AUDIODRIVER", "coreaudio")   # SDL2
     proc = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", "-f", "f32le",
-                             "-ar", str(model.sr), "-ch_layout", "mono", "-i", "-"], stdin=subprocess.PIPE)
+                             "-ar", str(model.sr), "-ch_layout", "mono", "-i", "-"], stdin=subprocess.PIPE, env=env)
     STATE.write_text("playing")
     PID.write_text(str(os.getpid()))
-    q, block, LEAD = queue.Queue(), int(model.sr * 0.2), 0.5
+    sr = model.sr  # the main thread drops `model` once generation ends, while this thread is still playing
+    q, block, LEAD = queue.Queue(), int(sr * 0.2), 0.5
 
     def feed():
         sent, t0 = 0.0, time.monotonic()  # seconds written, and when second 0 would have played
@@ -234,7 +241,7 @@ def player():
                     elif ahead < 0:  # generation fell behind and the player ran dry: restart the clock
                         t0 = time.monotonic() - sent
                     proc.stdin.write(wav[i:i + block].tobytes())
-                    sent += len(wav[i:i + block]) / model.sr
+                    sent += len(wav[i:i + block]) / sr
             proc.stdin.close()
         except BrokenPipeError:  # the player was closed; keep rendering the file
             pass
