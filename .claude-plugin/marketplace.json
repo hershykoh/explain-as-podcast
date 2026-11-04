@@ -1,0 +1,15 @@
+{
+  "name": "hershykoh",
+  "description": "Hershy Kohn's Claude Code plugins.",
+  "owner": {
+    "name": "Hershy Kohn",
+    "url": "https://github.com/hershykoh"
+  },
+  "plugins": [
+    {
+      "name": "explain-as-podcast",
+      "source": "./",
+      "description": "Explain any topic, code, or answer as a two-host audio podcast rendered locally by Chatterbox Turbo."
+    }
+  ]
+}
