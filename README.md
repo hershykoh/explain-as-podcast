@@ -25,7 +25,7 @@ Then ask *"explain this as a podcast"* or run `/explain-as-podcast [topic]`.
 - Python 3.10+ and `ffmpeg` (`brew install ffmpeg` on macOS)
 - ~4 GB free disk for the model
 - Apple Silicon (MPS), an NVIDIA GPU, or patience on CPU
-- Apple Silicon tip: `brew install python@3.12` before the first run. Setup then uses [chatterbox-mlx](https://pypi.org/project/chatterbox-mlx/), the same model on Apple's MLX, which renders about 1.5x faster end to end. Set `EXPLAIN_PODCAST_QUANT_BITS=8` for a little more speed (listen first).
+- Apple Silicon tip: `brew install python@3.12` before the first run. Setup then uses [chatterbox-mlx](https://pypi.org/project/chatterbox-mlx/), the same model on Apple's MLX, which renders about 2x faster end to end. Set `EXPLAIN_PODCAST_QUANT_BITS=8` for a little more speed (listen first).
 
 The first run creates a virtualenv in `~/.local/share/explain-as-podcast` (override with `EXPLAIN_PODCAST_HOME`), installs Chatterbox Turbo, and copies in the two default host voices from `voices/`. Episodes are saved in `episodes/` there.
 

@@ -35,22 +35,56 @@ def fresh(cache, wav):
     return cache.exists() and cache.stat().st_mtime >= wav.stat().st_mtime
 
 if ChatterboxTurboMLX:
+    # Internals below are from chatterbox-mlx 1.3.1 (pinned in podcast.sh).
+    from chatterbox.tts_turbo_mlx import MAX_GEN_LEN, chunk_speech_cap, crossfade_chunks, plan_chunks, postprocess_speech_tokens
+
     quant = int(os.environ.get("EXPLAIN_PODCAST_QUANT_BITS") or 0) or None  # 8 = ~15% faster; listen first
     print(f"Loading Chatterbox Turbo on MLX{f' ({quant}-bit)' if quant else ''}...")
     model = ChatterboxTurboMLX.from_pretrained(quantize_bits=quant)
 
     def load_voice(wav, cache):
-        if fresh(cache, wav):  # .conds.pt written by the PyTorch backend loads here too
+        if fresh(cache, wav):
             model.set_conditionals_from_dict(torch.load(cache))
-        else:
-            model.prepare_conditionals(str(wav), norm_loudness=False)
-        return model._t3_cond_emb, model._ref_dict  # chatterbox-mlx is pinned in podcast.sh
+        else:  # embed the clip once and save it in upstream's conds.pt layout; rebuilt if the .wav changes
+            saved = {}
+            def capture(speaker_emb, prompt_tokens, ref_dict, _orig=model._set_conditionals):
+                saved.update(t3={"speaker_emb": torch.from_numpy(np.asarray(speaker_emb)),
+                                 "cond_prompt_speech_tokens": None if prompt_tokens is None else torch.from_numpy(np.asarray(prompt_tokens))},
+                             gen=ref_dict)
+                _orig(speaker_emb, prompt_tokens, ref_dict)
+            model._set_conditionals = capture
+            try:
+                model.prepare_conditionals(str(wav), norm_loudness=False)
+            finally:
+                del model._set_conditionals
+            torch.save(saved, cache)
+        return model._t3_cond_emb, model._ref_dict
 
     def set_voice(conds):
         model._t3_cond_emb, model._ref_dict = conds
 
-    def speak(text):
-        return np.asarray(model.generate(text), dtype=np.float32).reshape(-1)
+    def speak_all(texts):
+        """All of one host's lines at once: their sentence chunks decode together, up to 8 per T3 batch,
+        instead of one generate() per line. Each line is then rebuilt and watermarked as generate() would."""
+        pieces = [(n, piece) for n, text in enumerate(texts) for piece in plan_chunks(text)]
+        groups = model._groups(len(pieces), 8)
+        chunks = [[] for _ in texts]
+        for group in groups:
+            tokens = model.t3.generate_batch(
+                model._t3_cond_emb, [model._encode_text(pieces[i][1]) for i in group],
+                seeds=[None] * len(group), max_gen_lens=[chunk_speech_cap(pieces[i][1], MAX_GEN_LEN) for i in group],
+                n_slots=len(groups[0]), stats={}, temperature=0.8, top_k=1000, top_p=0.95,
+                repetition_penalty=1.2, max_gen_len=MAX_GEN_LEN)
+            for i, toks in zip(group, tokens):
+                chunks[pieces[i][0]].append(model._vocode(postprocess_speech_tokens(toks), 2, None))
+        out = []
+        for parts in chunks:
+            min_len = int(model.sr * 0.12) + 1  # generate() drops chunks too short to crossfade
+            parts = [w for w in parts if len(w) >= min_len] or parts[:1]
+            wav = crossfade_chunks(parts, model.sr, 0.05) if len(parts) > 1 else parts[0]
+            wav = np.asarray(wav.numpy() if hasattr(wav, "numpy") else wav, dtype=np.float32).reshape(-1)
+            out.append(np.asarray(model._watermark(wav), dtype=np.float32).reshape(-1) if len(wav) else wav)
+        return out
 else:
     from chatterbox.tts_turbo import ChatterboxTurboTTS, Conditionals
     from transformers.initialization import no_init_weights
@@ -70,8 +104,8 @@ else:
     def set_voice(conds):
         model.conds = conds
 
-    def speak(text):
-        return model.generate(text).squeeze().cpu().numpy()
+    def speak_all(texts):
+        return [model.generate(t).squeeze().cpu().numpy() for t in texts]
 
 voices = {}
 def resolve_voice(name):
@@ -141,38 +175,28 @@ def parse_items(src_path):
 
 items = [(i[0], i[1], clean_tags(i[2])) if i[0] == "speech" else i for i in parse_items(src)]
 items = [i for i in items if i[0] == "break" or i[2]]  # a line that was only an unknown tag
-tmp = Path(tempfile.mkdtemp())
-parts, start = [], time.time()
-speech_count = sum(1 for item in items if item[0] == "speech")
-idx = 0
+start = time.time()
+speech = [i for i, item in enumerate(items) if item[0] == "speech"]
+audio = {}
+for v in dict.fromkeys(resolve_voice(items[i][1]) for i in speech):  # each host once, in order of appearance
+    mine = [i for i in speech if resolve_voice(items[i][1]) == v]
+    use_voice(v)
+    for i, wav in zip(mine, speak_all([items[i][2] for i in mine])):
+        audio[i] = wav
+    print(f"{v}: {len(mine)} lines [{time.time() - start:.0f}s]", flush=True)
 
-last_speaker = None
-for item in items:
+out, last_speaker = [], None
+for i, item in enumerate(items):
     if item[0] == "break":
-        sec = item[1]
-        f = tmp / f"{len(parts):03}_break.wav"
-        silence = np.zeros(int(model.sr * sec), dtype=np.float32)
-        sf.write(f, silence, model.sr)
-        parts.append(f)
-    elif item[0] == "speech":
-        speaker, text = item[1], item[2]
-        # Insert a natural short pause between speaker turns if there was no explicit break
-        if last_speaker is not None and last_speaker != speaker and (not parts or not str(parts[-1]).endswith("_break.wav")):
-            f_pause = tmp / f"{len(parts):03}_break.wav"
-            silence = np.zeros(int(model.sr * 0.25), dtype=np.float32)
-            sf.write(f_pause, silence, model.sr)
-            parts.append(f_pause)
-        
-        idx += 1
-        use_voice(speaker)
-        f = tmp / f"{len(parts):03}.wav"
-        sf.write(f, speak(text), model.sr)
-        parts.append(f)
-        last_speaker = speaker
-        print(f"line {idx}/{speech_count} ({speaker}: {text[:30]}...) [{time.time() - start:.0f}s]", flush=True)
+        out.append(np.zeros(int(model.sr * item[1]), dtype=np.float32))
+        continue
+    # a short natural pause between speaker turns, unless the script already has a break there
+    if last_speaker not in (None, item[1]) and items[i - 1][0] != "break":
+        out.append(np.zeros(int(model.sr * 0.25), dtype=np.float32))
+    out.append(audio[i])
+    last_speaker = item[1]
 
-lines_to_write = [f"file '{p}'\n" for p in parts]
-(tmp / "list.txt").write_text("".join(lines_to_write))
-subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(tmp / "list.txt"),
-                "-b:a", "128k", dst], check=True)
-print(f"wrote {dst} ({len(parts)} segments in {time.time() - start:.1f}s)")
+tmp = Path(tempfile.mkdtemp()) / "podcast.wav"
+sf.write(tmp, np.concatenate(out) if out else np.zeros(1, np.float32), model.sr)
+subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(tmp), "-b:a", "128k", dst], check=True)
+print(f"wrote {dst} ({len(speech)} lines in {time.time() - start:.1f}s)")
