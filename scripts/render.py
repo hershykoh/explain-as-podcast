@@ -225,24 +225,34 @@ def player():
     q, block, LEAD = queue.Queue(), int(sr * 0.2), 0.5
 
     def feed():
-        sent, t0 = 0.0, time.monotonic()  # seconds written, and when second 0 would have played
+        # Write one 0.2 s block every 0.2 s, never more than LEAD ahead. ffplay goes silent for good if its
+        # input stalls (seen on macOS), so whenever there is no speech to send (before the first line, while
+        # paused, or if generation falls behind) it gets silence instead of nothing.
+        silence = np.zeros(block, dtype=np.float32)
+        sent, t0, cur, pos = 0.0, time.monotonic(), np.zeros(0, np.float32), 0
         try:
-            while (wav := q.get()) is not None:
-                for i in range(0, len(wav), block):
-                    while (state := STATE.read_text().strip() if STATE.exists() else "stopped") == "paused":
-                        time.sleep(0.1)
-                        t0 += 0.1
-                    if state == "stopped":
-                        proc.terminate()
+            while True:
+                state = STATE.read_text().strip() if STATE.exists() else "stopped"
+                if state == "stopped":
+                    proc.terminate()
+                    return
+                ahead = sent - (time.monotonic() - t0)
+                if ahead > LEAD:
+                    time.sleep(ahead - LEAD)
+                if state != "paused" and pos >= len(cur):
+                    try:
+                        cur, pos = q.get_nowait(), 0
+                    except queue.Empty:
+                        cur, pos = np.zeros(0, np.float32), 0
+                    if cur is None:  # end of the episode
+                        proc.stdin.close()
                         return
-                    ahead = sent - (time.monotonic() - t0)
-                    if ahead > LEAD:
-                        time.sleep(ahead - LEAD)
-                    elif ahead < 0:  # generation fell behind and the player ran dry: restart the clock
-                        t0 = time.monotonic() - sent
-                    proc.stdin.write(wav[i:i + block].tobytes())
-                    sent += len(wav[i:i + block]) / sr
-            proc.stdin.close()
+                if state == "paused" or pos >= len(cur):
+                    data = silence
+                else:
+                    data, pos = cur[pos:pos + block], pos + block
+                proc.stdin.write(data.tobytes())
+                sent += len(data) / sr
         except BrokenPipeError:  # the player was closed; keep rendering the file
             pass
 
