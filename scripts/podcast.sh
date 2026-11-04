@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Usage: podcast.sh <script.ssml|script.txt> <out.mp3>
+# Usage: podcast.sh [--play] <script.ssml|script.txt> <out.mp3>
+#        podcast.sh pause|play|stop     (control a --play stream)
 # First run installs Chatterbox Turbo into $EXPLAIN_PODCAST_HOME and copies in the two default host voices.
 set -euo pipefail
 HOME_DIR="${EXPLAIN_PODCAST_HOME:-$HOME/.local/share/explain-as-podcast}"
@@ -7,6 +8,16 @@ VENV="$HOME_DIR/venv"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 command -v ffmpeg >/dev/null || { echo "ffmpeg is required (macOS: brew install ffmpeg)" >&2; exit 1; }
+
+# Live-stream controls for a render started with --play.
+case "${1:-}" in
+  pause|play|resume|stop)
+    if [ ! -f "$HOME_DIR/player.pid" ] || ! kill -0 "$(cat "$HOME_DIR/player.pid")" 2>/dev/null; then
+      echo "nothing is streaming right now (finished episodes play from their MP3)" >&2; exit 1
+    fi
+    case "$1" in pause) s=paused;; stop) s=stopped;; *) s=playing;; esac
+    echo "$s" > "$HOME_DIR/player.state"; echo "$s"; exit 0;;
+esac
 
 if [ ! -x "$VENV/bin/python" ]; then
   echo "First run: installing Chatterbox Turbo into $VENV (a few GB, one time)..." >&2

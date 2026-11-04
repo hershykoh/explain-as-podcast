@@ -19,6 +19,7 @@ if len(args) != 2:
 src, dst = Path(args[0]), args[1]
 HERE = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("EXPLAIN_PODCAST_HOME", Path.home() / ".local/share/explain-as-podcast"))
+STATE, PID = DATA / "player.state", DATA / "player.pid"  # live-stream controls, see player()
 
 sys.path.insert(0, str(HERE))
 from ssml import parse  # parse before loading the model, so a bad script fails fast
@@ -202,21 +203,44 @@ def episode(line_audio):
 
 
 def player():
-    """Feed raw audio to ffplay from a thread, so generation (which stays on this thread) never waits on playback."""
+    """Stream to ffplay from a thread, so generation (which stays on this thread) never waits on playback.
+
+    Audio is fed in 0.2 s blocks at most LEAD seconds ahead of real time, so pausing takes effect within
+    about a second. `podcast.sh pause|play|stop` writes the wanted state to $DATA/player.state.
+    """
     if not shutil.which("ffplay"):
         print("note: --play needs ffplay (it comes with ffmpeg); rendering without playback", file=sys.stderr)
         return None, None
     proc = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", "-f", "f32le",
                              "-ar", str(model.sr), "-ch_layout", "mono", "-i", "-"], stdin=subprocess.PIPE)
-    q = queue.Queue()
+    STATE.write_text("playing")
+    PID.write_text(str(os.getpid()))
+    q, block, LEAD = queue.Queue(), int(model.sr * 0.2), 0.5
+
     def feed():
-        while (wav := q.get()) is not None:
-            try:
-                proc.stdin.write(wav.tobytes())
-            except BrokenPipeError:  # the listener closed the player; keep rendering the file
-                return
-        proc.stdin.close()
+        sent, t0 = 0.0, time.monotonic()  # seconds written, and when second 0 would have played
+        try:
+            while (wav := q.get()) is not None:
+                for i in range(0, len(wav), block):
+                    while (state := STATE.read_text().strip() if STATE.exists() else "stopped") == "paused":
+                        time.sleep(0.1)
+                        t0 += 0.1
+                    if state == "stopped":
+                        proc.terminate()
+                        return
+                    ahead = sent - (time.monotonic() - t0)
+                    if ahead > LEAD:
+                        time.sleep(ahead - LEAD)
+                    elif ahead < 0:  # generation fell behind and the player ran dry: restart the clock
+                        t0 = time.monotonic() - sent
+                    proc.stdin.write(wav[i:i + block].tobytes())
+                    sent += len(wav[i:i + block]) / model.sr
+            proc.stdin.close()
+        except BrokenPipeError:  # the player was closed; keep rendering the file
+            pass
+
     threading.Thread(target=feed, daemon=True).start()
+    print(f"streaming: pause / resume / stop with `podcast.sh pause|play|stop`", flush=True)
     return proc, q
 
 
@@ -265,3 +289,5 @@ if proc:
     _lock.close()
     q.put(None)
     proc.wait()
+    STATE.unlink(missing_ok=True)
+    PID.unlink(missing_ok=True)

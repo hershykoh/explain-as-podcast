@@ -18,7 +18,10 @@ https://github.com/user-attachments/assets/d565382b-b580-4437-9de1-dd42505afc45
 /plugin install explain-as-podcast@hershykoh
 ```
 
-Then ask *"explain this as a podcast"* or run `/explain-as-podcast [topic]`.
+Two skills:
+
+- **explain-as-podcast**: ask *"explain this as a podcast"* or run `/explain-as-podcast [topic]` to get an MP3 in the chat. This is the fastest way to a finished file.
+- **stream-podcast**: ask *"play it as a podcast"* or run `/stream-podcast [topic]`. It starts playing on your speakers within seconds, and you can say *pause*, *resume* or *stop*. You still get the MP3 when it finishes.
 
 ## Requirements
 
@@ -36,7 +39,7 @@ scripts/podcast.sh my-script.ssml out.mp3          # file only, fastest total ti
 scripts/podcast.sh --play my-script.ssml out.mp3   # start listening ~3 s after the model loads
 ```
 
-`--play` streams to your speakers through `ffplay` (part of ffmpeg) while the rest renders; generation runs about 3x faster than playback, so it never stalls. The skill uses it by default.
+`--play` streams to your speakers through `ffplay` (part of ffmpeg) while the rest renders. Generation runs about 3x faster than playback, so it never stalls, and the MP3 is still written. Control a live stream with `scripts/podcast.sh pause`, `play` and `stop`.
 
 Script format — SSML (below), or plain lines:
 
