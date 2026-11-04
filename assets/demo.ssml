@@ -1,11 +1,13 @@
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-  <voice name="s1">So wait. I asked Claude why my build was failing, and instead of a wall of text, it made... us?</voice>
-  <voice name="s2">[chuckle] Yep. One command, explain as podcast, and you get two hosts walking through it.</voice>
+  <voice name="s1">[sigh] Okay. Claude just gave me a wall of text about why my build is failing, and I'm not reading all that.</voice>
+  <voice name="s2">[chuckle] So you typed "explain this as a podcast," and now you've got us.</voice>
   <break time="300ms"/>
-  <voice name="s1">And this all runs on my own laptop? No cloud, no API key?</voice>
-  <voice name="s2">All local. Chatterbox Turbo on your Mac or GPU. About a minute of rendering per minute of audio.</voice>
-  <voice name="s1">Okay, but can it do the thing where podcast hosts laugh at their own jokes?</voice>
-  <voice name="s2">[laugh] Unfortunately, yes.</voice>
+  <voice name="s1">Wait, this is running on my laptop? No cloud, no API key?</voice>
+  <voice name="s2">All local. Chatterbox Turbo, on your Mac or your GPU. About thirty seconds to make a clip like this one.</voice>
+  <voice name="s1">[gasp] And we sigh, and laugh, and breathe like real people?</voice>
+  <voice name="s2">[clear throat] Nineteen sound and mood tags. Including... [whispering] this one.</voice>
   <break time="400ms"/>
-  <voice name="s1">Install it, ask Claude to explain anything as a podcast, and that's it.</voice>
+  <voice name="s1">[laugh] Okay, that's a little creepy. So what was wrong with my build?</voice>
+  <voice name="s2">[sarcastic] It was the environment variables. It's always the environment variables.</voice>
+  <voice name="s1">Install the plugin, ask Claude to explain anything as a podcast, and that's it.</voice>
 </speak>
