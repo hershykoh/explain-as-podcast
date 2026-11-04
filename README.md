@@ -32,8 +32,11 @@ The first run creates a virtualenv in `~/.local/share/explain-as-podcast` (overr
 ## Use the renderer directly
 
 ```bash
-scripts/podcast.sh my-script.ssml out.mp3
+scripts/podcast.sh my-script.ssml out.mp3          # file only, fastest total time
+scripts/podcast.sh --play my-script.ssml out.mp3   # start listening ~3 s after the model loads
 ```
+
+`--play` streams to your speakers through `ffplay` (part of ffmpeg) while the rest renders; generation runs about 3x faster than playback, so it never stalls. The skill uses it by default.
 
 Script format — SSML (below), or plain lines:
 

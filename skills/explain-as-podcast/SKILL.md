@@ -76,14 +76,17 @@ Other SSML elements (`<emphasis>`, `<s>`, `<mark>`, `<lang>`) are allowed, but o
 Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`, then run the renderer two folders above this skill's real directory (`realpath` follows a symlinked skill folder back to the plugin):
 
 ```bash
-"$(realpath "<this skill's base directory>")/../../scripts/podcast.sh" \
+"$(realpath "<this skill's base directory>")/../../scripts/podcast.sh" --play \
   ~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml \
   ~/.local/share/explain-as-podcast/episodes/<short-slug>.mp3
 ```
 
-The first run installs Chatterbox Turbo (a few GB) and can take several minutes; run it in the background and tell the user. Run one render at a time, never several in parallel: each loads the model, and extra renders just wait their turn. Later runs take about 20 seconds for 45 seconds of audio on Apple Silicon with MLX.
+`--play` streams the episode to the user's speakers while it renders: it starts about 3 seconds after the model loads (about 15 s on Apple Silicon) and never has to wait for the next line. Run the command in the background and tell the user it will start playing shortly, instead of waiting for it to finish. Leave out `--play` when the user can't hear this machine (remote or headless sessions) or asks for the file only; that mode batches lines and finishes the file about twice as fast, but nothing plays early.
+
+The first run installs Chatterbox Turbo (a few GB) and can take several minutes; tell the user. Run one render at a time, never several in parallel: each loads the model, and extra renders wait their turn.
 
 ## 4. Deliver
+When the render finishes (the MP3 is written while the last lines may still be playing):
 - Embed the audio: `![podcast](<absolute path to the .mp3>)`
 - Add 3–4 bullets summarizing the key points.
 - Link the script file.

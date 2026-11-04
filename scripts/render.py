@@ -1,4 +1,7 @@
-"""Render a podcast script with Chatterbox Turbo. Usage: render.py <script.ssml|script.txt> <out.mp3>
+"""Render a podcast script with Chatterbox Turbo. Usage: render.py [--play] <script.ssml|script.txt> <out.mp3>
+
+--play streams the episode to the speakers while it renders (through ffplay, which ships with ffmpeg):
+the first line plays as soon as it is ready instead of after the whole episode. The MP3 is still written.
 
 Script format and every supported tag are in ssml.py and the skill's SKILL.md. In short:
   <voice name>   s1/s2, any file in the voice library (voices/), or a path to a .wav to clone
@@ -6,12 +9,14 @@ Script format and every supported tag are in ssml.py and the skill's SKILL.md. I
   temperature / top_p / top_k / repetition_penalty / seed   engine sampling, on <speak>, <voice> or <prosody>
   <prosody rate pitch volume>, <break>, <p>, <sub>, <say-as interpret-as="characters">, <audio src>
 """
-import fcntl, os, subprocess, sys, tempfile, time
+import fcntl, os, queue, shutil, subprocess, sys, tempfile, threading, time
 from pathlib import Path
 
-if len(sys.argv) != 3:
-    sys.exit("usage: render.py <script.ssml|script.txt> <out.mp3>")
-src, dst = Path(sys.argv[1]), sys.argv[2]
+args = [a for a in sys.argv[1:] if a != "--play"]
+PLAY = "--play" in sys.argv[1:]
+if len(args) != 2:
+    sys.exit("usage: render.py [--play] <script.ssml|script.txt> <out.mp3>")
+src, dst = Path(args[0]), args[1]
 HERE = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("EXPLAIN_PODCAST_HOME", Path.home() / ".local/share/explain-as-podcast"))
 
@@ -171,40 +176,92 @@ def apply_prosody(wav, prosody):
     return np.clip(wav, -1.0, 1.0).astype(np.float32)
 
 
+def finish(n, wav):
+    wav = apply_prosody(wav, items[n][4])
+    # watermark the final take: MLX lines arrive unmarked, and prosody changes a PyTorch line after its mark
+    return watermark(wav) if ChatterboxTurboMLX or items[n][4] else wav
+
+
+def episode(line_audio):
+    """The episode's pieces in script order: lines, breaks, inserted audio and turn-taking pauses."""
+    last_voice = None
+    for n, item in enumerate(items):
+        if item[0] == "break":
+            yield np.zeros(int(model.sr * item[1]), dtype=np.float32)
+        elif item[0] == "audio":
+            if Path(item[1]).exists():
+                yield librosa.load(item[1], sr=model.sr, mono=True)[0].astype(np.float32)
+            else:
+                print(f"note: skipped missing audio {item[1]}", file=sys.stderr)
+        else:
+            # a short natural pause between speaker turns, unless the script already has a break there
+            if last_voice not in (None, item[1]) and items[n - 1][0] == "speech":
+                yield np.zeros(int(model.sr * 0.25), dtype=np.float32)
+            yield line_audio(n)
+            last_voice = item[1]
+
+
+def player():
+    """Feed raw audio to ffplay from a thread, so generation (which stays on this thread) never waits on playback."""
+    if not shutil.which("ffplay"):
+        print("note: --play needs ffplay (it comes with ffmpeg); rendering without playback", file=sys.stderr)
+        return None, None
+    proc = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", "-f", "f32le",
+                             "-ar", str(model.sr), "-ch_layout", "mono", "-i", "-"], stdin=subprocess.PIPE)
+    q = queue.Queue()
+    def feed():
+        while (wav := q.get()) is not None:
+            try:
+                proc.stdin.write(wav.tobytes())
+            except BrokenPipeError:  # the listener closed the player; keep rendering the file
+                return
+        proc.stdin.close()
+    threading.Thread(target=feed, daemon=True).start()
+    return proc, q
+
+
 start = time.time()
 speech = [n for n, item in enumerate(items) if item[0] == "speech"]
-batches = {}
-for n in speech:
-    sampling = {**DEFAULTS, **items[n][3]}
-    batches.setdefault((items[n][1], tuple(sorted(sampling.items()))), []).append(n)
+proc, q = player() if PLAY else (None, None)
 
-audio = {}
-for (voice, sampling), mine in batches.items():  # each voice + sampling once, in order of appearance
-    use_voice(voice)
-    texts = [items[n][2] for n in mine]
-    for n, wav in zip(mine, speak_all(texts, dict(sampling))):
-        wav = apply_prosody(wav, items[n][4])
-        # watermark the final take: MLX lines arrive unmarked, and prosody changes a PyTorch line after its mark
-        audio[n] = watermark(wav) if ChatterboxTurboMLX or items[n][4] else wav
-    print(f"{voice}: {len(mine)} lines [{time.time() - start:.0f}s]", flush=True)
+if q:
+    # Streaming: one line at a time in script order. Each line renders ~3x faster than it plays,
+    # so after the first line the player stays ahead of the listener.
+    def line_audio(n):
+        use_voice(items[n][1])
+        wav = finish(n, speak_all([items[n][2]], {**DEFAULTS, **items[n][3]})[0])
+        print(f"line {speech.index(n) + 1}/{len(speech)} [{time.time() - start:.1f}s]", flush=True)
+        return wav
+else:
+    # File only: batch each voice's lines into one decode (about 2x faster in total, but nothing plays early).
+    batches = {}
+    for n in speech:
+        sampling = {**DEFAULTS, **items[n][3]}
+        batches.setdefault((items[n][1], tuple(sorted(sampling.items()))), []).append(n)
+    audio = {}
+    for (voice, sampling), mine in batches.items():  # each voice + sampling once, in order of appearance
+        use_voice(voice)
+        for n, wav in zip(mine, speak_all([items[n][2] for n in mine], dict(sampling))):
+            audio[n] = finish(n, wav)
+        print(f"{voice}: {len(mine)} lines [{time.time() - start:.0f}s]", flush=True)
+    line_audio = audio.__getitem__
 
-out, last_voice = [], None
-for n, item in enumerate(items):
-    if item[0] == "break":
-        out.append(np.zeros(int(model.sr * item[1]), dtype=np.float32))
-    elif item[0] == "audio":
-        if Path(item[1]).exists():
-            out.append(librosa.load(item[1], sr=model.sr, mono=True)[0].astype(np.float32))
-        else:
-            print(f"note: skipped missing audio {item[1]}", file=sys.stderr)
-    else:
-        # a short natural pause between speaker turns, unless the script already has a break there
-        if last_voice not in (None, item[1]) and items[n - 1][0] == "speech":
-            out.append(np.zeros(int(model.sr * 0.25), dtype=np.float32))
-        out.append(audio[n])
-        last_voice = item[1]
+out = []
+for wav in episode(line_audio):
+    if q:
+        if not out:
+            print(f"playing after {time.time() - start:.1f}s", flush=True)
+        q.put(wav)
+    out.append(wav)
 
 tmp = Path(tempfile.mkdtemp()) / "podcast.wav"
 sf.write(tmp, np.concatenate(out) if out else np.zeros(1, np.float32), model.sr)
 subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(tmp), "-b:a", "128k", dst], check=True)
-print(f"wrote {dst} ({len(speech)} lines in {time.time() - start:.1f}s)")
+print(f"wrote {dst} ({len(speech)} lines in {time.time() - start:.1f}s)", flush=True)
+
+if proc:
+    # Free the model and the render lock now; only the player is left, finishing the last lines.
+    del model
+    _lock.close()
+    q.put(None)
+    proc.wait()
