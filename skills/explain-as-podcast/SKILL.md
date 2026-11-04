@@ -37,7 +37,7 @@ Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml
 ../../scripts/podcast.sh ~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml ~/.local/share/explain-as-podcast/episodes/<short-slug>.mp3
 ```
 
-The first run installs Chatterbox Turbo (a few GB) and can take several minutes; run it in the background and tell the user. Later runs take about a minute per minute of audio on Apple Silicon.
+The first run installs Chatterbox Turbo (a few GB) and can take several minutes; run it in the background and tell the user. Run one render at a time, never several in parallel: each loads the model, and extra renders just wait their turn. Later runs take about a minute per minute of audio on Apple Silicon.
 
 ## 4. Deliver
 - Embed the audio: `![podcast](<absolute path to the .mp3>)`

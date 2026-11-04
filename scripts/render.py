@@ -4,17 +4,29 @@ Supports SSML <speak>, <voice name="...">, <break time="...">, and inline tags l
 Each speaker voice is cloned from $DATA/voices/<speaker>.wav (s1.wav, s2.wav; made by setup.sh), then concatenated.
 Usage: render.py <script.ssml|script.txt> <out.mp3>
 """
-import os, re, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
+import fcntl, os, re, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
 from pathlib import Path
-import numpy as np
-import soundfile as sf
-import torch
-from chatterbox.tts_turbo import ChatterboxTurboTTS
 
 if len(sys.argv) != 3:
     sys.exit("usage: render.py <script.ssml|script.txt> <out.mp3>")
 src, dst = sys.argv[1:3]
 DATA = Path(os.environ.get("EXPLAIN_PODCAST_HOME", Path.home() / ".local/share/explain-as-podcast"))
+
+# One render at a time: each loads the model (several GB), and parallel renders can freeze a 16 GB machine.
+# Taken before the heavy imports; the OS releases it if this process dies.
+DATA.mkdir(parents=True, exist_ok=True)
+_lock = open(DATA / "render.lock", "w")
+try:
+    fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print("Another podcast is rendering; waiting for it to finish...", flush=True)
+    fcntl.flock(_lock, fcntl.LOCK_EX)
+
+import numpy as np
+import soundfile as sf
+import torch
+from chatterbox.tts_turbo import ChatterboxTurboTTS
+
 device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"Loading Chatterbox Turbo on {device}...")
 model = ChatterboxTurboTTS.from_pretrained(device=device)
