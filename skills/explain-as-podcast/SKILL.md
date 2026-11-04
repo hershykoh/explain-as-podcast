@@ -57,10 +57,12 @@ These 19 are the only tags the model knows. Anything else, like `[breath]` or `[
 Only `<voice>`, `<break>` and the inline tags above are honored; other SSML tags are read as plain text.
 
 ## 3. Render
-Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`, then run (from this skill's base directory):
+Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`, then run the renderer two folders above this skill's real directory (`realpath` follows a symlinked skill folder back to the plugin):
 
 ```bash
-../../scripts/podcast.sh ~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml ~/.local/share/explain-as-podcast/episodes/<short-slug>.mp3
+"$(realpath "<this skill's base directory>")/../../scripts/podcast.sh" \
+  ~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml \
+  ~/.local/share/explain-as-podcast/episodes/<short-slug>.mp3
 ```
 
 The first run installs Chatterbox Turbo (a few GB) and can take several minutes; run it in the background and tell the user. Run one render at a time, never several in parallel: each loads the model, and extra renders just wait their turn. Later runs take about 20 seconds for 45 seconds of audio on Apple Silicon with MLX.
