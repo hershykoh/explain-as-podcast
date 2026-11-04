@@ -48,6 +48,10 @@ Inline tags (all 19 that Chatterbox Turbo knows; anything else is dropped):
 - Sounds: `[laugh]` `[chuckle]` `[sigh]` `[gasp]` `[groan]` `[clear throat]` `[cough]` `[sniff]` `[shush]` `[crying]`
 - Delivery: `[happy]` `[surprised]` `[sarcastic]` `[angry]` `[fear]` `[whispering]` `[dramatic]` `[narration]` `[advertisement]`
 
+## Voices
+
+[`voices/`](voices/) has ten narrator voices from the CC BY 4.0 Hi-Fi TTS dataset, recorded from public-domain LibriVox audiobooks, with natural breathing. Copy any of them over a host's sample to use it.
+
 ## Custom voices
 
 Replace `~/.local/share/explain-as-podcast/voices/s1.wav` / `s2.wav` with any clean 5–15 second recording (only use voices you have the right to use). The defaults are generated on your machine with Microsoft Edge TTS voices.
