@@ -1,6 +1,6 @@
 {
   "name": "explain-as-podcast",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Explain any topic, code, or answer as a two-host audio podcast (with laughs) rendered locally by Chatterbox Turbo.",
   "author": {
     "name": "Hershy Kohn",
