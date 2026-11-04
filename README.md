@@ -2,7 +2,7 @@
 
 A Claude Code plugin that explains any topic, code change, error, or answer as a two-host audio podcast — with laughs, chuckles, and natural pauses — rendered **locally** with [Chatterbox Turbo](https://huggingface.co/ResembleAI/chatterbox-turbo).
 
-https://github.com/user-attachments/assets/fcbbf171-0c44-4d9e-9e88-698472224318
+https://github.com/user-attachments/assets/d565382b-b580-4437-9de1-dd42505afc45
 
 *49-second demo with the default hosts, rendered on a MacBook with no cloud and no API key ([mp3](https://github.com/hershykoh/explain-as-podcast/raw/main/assets/demo.mp3) · [script](assets/demo.ssml)).*
 
