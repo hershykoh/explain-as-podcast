@@ -25,13 +25,53 @@ except BlockingIOError:
 import numpy as np
 import soundfile as sf
 import torch
-from chatterbox.tts_turbo import ChatterboxTurboTTS, Conditionals
-from transformers.initialization import no_init_weights
 
-device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-print(f"Loading Chatterbox Turbo on {device}...")
-with no_init_weights():  # skip random init of weights the checkpoint overwrites anyway: ~2x faster load, identical output
-    model = ChatterboxTurboTTS.from_pretrained(device=device)
+try:  # Apple Silicon: the MLX port of the same model (chatterbox-mlx) renders ~1.5x faster end to end
+    from chatterbox.tts_turbo_mlx import ChatterboxTurboMLX
+except ImportError:
+    ChatterboxTurboMLX = None
+
+def fresh(cache, wav):
+    return cache.exists() and cache.stat().st_mtime >= wav.stat().st_mtime
+
+if ChatterboxTurboMLX:
+    quant = int(os.environ.get("EXPLAIN_PODCAST_QUANT_BITS") or 0) or None  # 8 = ~15% faster; listen first
+    print(f"Loading Chatterbox Turbo on MLX{f' ({quant}-bit)' if quant else ''}...")
+    model = ChatterboxTurboMLX.from_pretrained(quantize_bits=quant)
+
+    def load_voice(wav, cache):
+        if fresh(cache, wav):  # .conds.pt written by the PyTorch backend loads here too
+            model.set_conditionals_from_dict(torch.load(cache))
+        else:
+            model.prepare_conditionals(str(wav), norm_loudness=False)
+        return model._t3_cond_emb, model._ref_dict  # chatterbox-mlx is pinned in podcast.sh
+
+    def set_voice(conds):
+        model._t3_cond_emb, model._ref_dict = conds
+
+    def speak(text):
+        return np.asarray(model.generate(text), dtype=np.float32).reshape(-1)
+else:
+    from chatterbox.tts_turbo import ChatterboxTurboTTS, Conditionals
+    from transformers.initialization import no_init_weights
+
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    print(f"Loading Chatterbox Turbo on {device}...")
+    with no_init_weights():  # skip random init of weights the checkpoint overwrites anyway: ~2x faster load, identical output
+        model = ChatterboxTurboTTS.from_pretrained(device=device)
+
+    def load_voice(wav, cache):
+        if fresh(cache, wav):
+            return Conditionals.load(cache).to(device)
+        model.prepare_conditionals(str(wav), norm_loudness=False)  # loudnorm returns float64, which MPS rejects
+        model.conds.save(cache)  # embed each voice clip once; rebuilt if the .wav changes
+        return model.conds
+
+    def set_voice(conds):
+        model.conds = conds
+
+    def speak(text):
+        return model.generate(text).squeeze().cpu().numpy()
 
 voices = {}
 def resolve_voice(name):
@@ -45,14 +85,8 @@ def resolve_voice(name):
 def use_voice(speaker):
     v = resolve_voice(speaker)
     if v not in voices:
-        wav, cache = DATA / "voices" / f"{v}.wav", DATA / "voices" / f"{v}.conds.pt"
-        if cache.exists() and cache.stat().st_mtime >= wav.stat().st_mtime:
-            model.conds = Conditionals.load(cache).to(device)
-        else:  # first use of this voice clip: embed it once and cache it (rebuilt if the .wav changes)
-            model.prepare_conditionals(str(wav), norm_loudness=False)  # loudnorm returns float64, which MPS rejects
-            model.conds.save(cache)
-        voices[v] = model.conds
-    model.conds = voices[v]
+        voices[v] = load_voice(DATA / "voices" / f"{v}.wav", DATA / "voices" / f"{v}.conds.pt")
+    set_voice(voices[v])
 
 def parse_items(src_path):
     content = Path(src_path).read_text().strip()
@@ -117,9 +151,8 @@ for item in items:
         
         idx += 1
         use_voice(speaker)
-        wav = model.generate(text)
         f = tmp / f"{len(parts):03}.wav"
-        sf.write(f, wav.squeeze().cpu().numpy(), model.sr)
+        sf.write(f, speak(text), model.sr)
         parts.append(f)
         last_speaker = speaker
         print(f"line {idx}/{speech_count} ({speaker}: {text[:30]}...) [{time.time() - start:.0f}s]", flush=True)
