@@ -73,7 +73,7 @@ These 19 are the only tags the model knows. Anything else, like `[breath]` or `[
 Other SSML elements (`<emphasis>`, `<s>`, `<mark>`, `<lang>`) are allowed, but only their text is read; the engine has no control for them. Inline markup never splits a sentence into separate takes.
 
 ## 3. Render
-Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`, then run the renderer two folders above this skill's real directory (`realpath` follows a symlinked skill folder back to the plugin):
+Start the renderer in the background before you write the script, so the model loads (about 20 s) while you write. The renderer is two folders above this skill's real directory (`realpath` follows a symlinked skill folder back to the plugin). It waits for the script file, so then write the whole script in one go to `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml`:
 
 ```bash
 "$(realpath "<this skill's base directory>")/../../scripts/podcast.sh" \
@@ -81,7 +81,7 @@ Save the script as `~/.local/share/explain-as-podcast/episodes/<short-slug>.ssml
   ~/.local/share/explain-as-podcast/episodes/<short-slug>.mp3
 ```
 
-This file-only mode batches each host's lines and is the fastest way to a finished MP3: about 20 seconds for 45 seconds of audio on Apple Silicon with MLX, most of it model load. Episodes over a minute or two: run it in the background and tell the user roughly how long it will take.
+This file-only mode batches each host's lines and is the fastest way to a finished MP3. With the model already loaded while you wrote, 45 seconds of audio takes about 8 seconds more on Apple Silicon with MLX. Wait for its `wrote <path>` line before delivering. If it exits with "unknown voice" or a parse error, fix the script and run it again.
 
 The first run installs Chatterbox Turbo (a few GB) and can take several minutes; tell the user. Run one render at a time, never several in parallel: each loads the model, and extra renders wait their turn.
 

@@ -24,7 +24,10 @@ STATE, PID = DATA / "player.state", DATA / "player.pid"  # live-stream controls,
 sys.path.insert(0, str(HERE))
 from ssml import parse  # parse before loading the model, so a bad script fails fast
 
-items = parse(src.read_text(), src.resolve().parent)
+# The script may not exist yet: the skills start this renderer first, so the model loads while Claude is still
+# writing the script. Then parsing waits until after the model is ready (see wait_for_script below).
+EARLY = not src.exists()
+items = [] if EARLY else parse(src.read_text(), src.resolve().parent)
 
 ALIASES = {"andrew": "s1", "speaker1": "s1", "brian": "s2", "speaker2": "s2"}
 voices = {}
@@ -183,8 +186,8 @@ def finish(n, wav):
     return watermark(wav) if ChatterboxTurboMLX or items[n][4] else wav
 
 
-def episode(line_audio):
-    """The episode's pieces in script order: lines, breaks, inserted audio and turn-taking pauses."""
+def episode(line_pieces):
+    """The episode's audio in script order: lines (as one or more pieces), breaks, inserts and turn pauses."""
     last_voice = None
     for n, item in enumerate(items):
         if item[0] == "break":
@@ -198,7 +201,7 @@ def episode(line_audio):
             # a short natural pause between speaker turns, unless the script already has a break there
             if last_voice not in (None, item[1]) and items[n - 1][0] == "speech":
                 yield np.zeros(int(model.sr * 0.25), dtype=np.float32)
-            yield line_audio(n)
+            yield from line_pieces(n)
             last_voice = item[1]
 
 
@@ -261,18 +264,49 @@ def player():
     return proc, q
 
 
+def wait_for_script(timeout=600):
+    """Warm the model up (the first generation is ~5 s slower than the rest), then wait for the script file
+    and parse it once it has stopped changing."""
+    use_voice("s1")
+    speak_all(["Okay.", "So here is the thing we are going to talk about today, step by step."], DEFAULTS)
+    print("ready; waiting for the script...", flush=True)
+    deadline, last = time.time() + timeout, None
+    while time.time() < deadline:
+        if src.exists():
+            stamp = (src.stat().st_size, src.stat().st_mtime)
+            if stamp == last and stamp[0]:
+                try:
+                    return parse(src.read_text(), src.resolve().parent)
+                except Exception:  # half-written XML: wait for the next write
+                    pass
+            last = stamp
+        time.sleep(0.3)
+    sys.exit(f"no script at {src} after {timeout // 60} minutes")
+
+
+if EARLY:
+    items = wait_for_script()
+    for _, voice, _, _, _ in (i for i in items if i[0] == "speech"):
+        voice_file(voice)
+
 start = time.time()
 speech = [n for n, item in enumerate(items) if item[0] == "speech"]
 proc, q = player() if PLAY else (None, None)
 
 if q:
-    # Streaming: one line at a time in script order. Each line renders ~3x faster than it plays,
-    # so after the first line the player stays ahead of the listener.
-    def line_audio(n):
+    # Streaming: script order, one sentence chunk at a time, so the first sound waits only for the first
+    # sentence, not the whole first line. Chunks render ~3x faster than they play, so the player stays ahead.
+    def line_pieces(n):
         use_voice(items[n][1])
-        wav = finish(n, speak_all([items[n][2]], {**DEFAULTS, **items[n][3]})[0])
+        sampling = {**DEFAULTS, **items[n][3]}
+        # the first line gets short chunks (~16 words instead of ~35) so the first sound comes sooner
+        short = n == speech[0]
+        texts = (plan_chunks(items[n][2], max_words=16, min_words=4) if short else plan_chunks(items[n][2])) \
+            if ChatterboxTurboMLX else [items[n][2]]
+        for k, text in enumerate(texts):
+            seeded = sampling if sampling["seed"] is None else {**sampling, "seed": sampling["seed"] + k}
+            yield finish(n, speak_all([text], seeded)[0])
         print(f"line {speech.index(n) + 1}/{len(speech)} [{time.time() - start:.1f}s]", flush=True)
-        return wav
 else:
     # File only: batch each voice's lines into one decode (about 2x faster in total, but nothing plays early).
     batches = {}
@@ -285,10 +319,10 @@ else:
         for n, wav in zip(mine, speak_all([items[n][2] for n in mine], dict(sampling))):
             audio[n] = finish(n, wav)
         print(f"{voice}: {len(mine)} lines [{time.time() - start:.0f}s]", flush=True)
-    line_audio = audio.__getitem__
+    line_pieces = lambda n: [audio[n]]
 
 out = []
-for wav in episode(line_audio):
+for wav in episode(line_pieces):
     if q:
         if not out:
             print(f"playing after {time.time() - start:.1f}s", flush=True)
